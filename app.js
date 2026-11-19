@@ -4,7 +4,6 @@ import {
 } from './model.js';
 import { checkEnvelope, deriveKey, seal, unseal } from './crypto.js';
 import { icon } from './icons.js';
-import { googleConfigured, googleReady, googleConnected, connectGoogle, loadDriveVideo } from './google-drive.js';
 
 const root = new URL('./', import.meta.url);
 const namespace = 'family-recipe-box:' + root.pathname;
@@ -20,7 +19,6 @@ const state = {
 let toastTimer;
 let deferredInstall;
 let starting = false;
-let disposePlayer;
 
 function element(tag, attributes = {}, ...children) {
   const node = document.createElement(tag);
@@ -129,10 +127,6 @@ async function start() {
     return;
   }
   if (starting) return;
-  if (!googleConnected()) {
-    renderGoogleSignIn();
-    return;
-  }
   starting = true;
   main.replaceChildren(element('section', { class: 'startup', role: 'status' }, 'Opening the recipe box…'));
   let storedKey;
@@ -152,39 +146,6 @@ async function start() {
   renderRoute(false);
 }
 
-function renderGoogleSignIn() {
-  const status = element('p', { class: 'form-status', role: 'alert' });
-  const signIn = button('Continue with Google', 'button primary', async () => {
-    if (!signIn.dataset.ready) { void prepare(); return; }
-    signIn.disabled = true;
-    status.textContent = '';
-    try {
-      await connectGoogle();
-      await start();
-    } catch (error) {
-      status.textContent = error.message;
-      signIn.disabled = false;
-    }
-  });
-  async function prepare() {
-    signIn.disabled = true;
-    status.textContent = '';
-    try {
-      await googleReady();
-      signIn.dataset.ready = 'true';
-    } catch (error) { status.textContent = error.message; }
-    finally { signIn.disabled = false; }
-  }
-  main.replaceChildren(element('section', { class: 'lock-layout' },
-    element('div', { class: 'hero lock-hero' }, heroArt(),
-      element('div', { class: 'hero-text' }, element('h1', {}, 'Family Recipe Box'))),
-    element('div', { class: 'panel unlock-panel' }, element('span', { class: 'brand-mark' }, icon('lock')),
-      element('h2', {}, 'Connect to Google Drive'),
-      p('Use the Google account that has access to the recipe videos.', 'muted'),
-      element('div', { class: 'unlock-form' },
-        googleConfigured ? signIn : p('Google sign-in needs to be configured for this site.', 'form-status'), status))));
-  if (googleConfigured) void prepare();
-}
 
 function renderHeader(page) {
   const logo = element('a', { href: '#/', class: 'brand', 'aria-label': 'Family Recipe Box home' },
@@ -454,42 +415,16 @@ function renderVideo(recipe) {
       anchor('Add Drive link', '#/videos/' + recipe.id, 'text-link', 'link'));
     return panel;
   }
-  const player = element('video', {
-    class: 'drive-player', controls: true, playsinline: true, preload: 'metadata',
-    'aria-label': 'Video for ' + recipe.title, hidden: true
-  });
-  const status = element('p', { role: 'status', class: 'help' });
-  const controller = new AbortController();
-  let objectUrl;
-  disposePlayer = () => {
-    controller.abort();
-    player.pause();
-    player.removeAttribute('src');
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-  };
-  const watch = button('Load video', 'button primary', async () => {
-    watch.disabled = true;
-    status.textContent = 'Loading video from Google Drive…';
-    try {
-      if (!googleConnected()) await connectGoogle();
-      const content = await loadDriveVideo(video, controller.signal);
-      if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(content);
-      player.src = objectUrl;
-      player.hidden = false;
-      watch.hidden = true;
-      status.textContent = '';
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      status.textContent = error.status || error.message.startsWith('Google') || error.message.startsWith('Allow')
-        ? error.message : 'The video could not load. Try again or open it in Drive.';
-      watch.disabled = false;
-    }
-  }, 'play');
-  player.addEventListener('error', () => {
-    if (!controller.signal.aborted) status.textContent = 'This browser could not play the video. You can open it in Drive below.';
-  });
-  panel.append(watch, player, status, outside('Open in Google Drive', driveUrl(video), 'text-link'));
+  const placeholder = element('div', { class: 'video-placeholder with-video' },
+    button('Load video', 'button primary', () => {
+      const frame = element('iframe', {
+        class: 'drive-player', src: driveUrl(video, 'preview'), title: 'Video for ' + recipe.title,
+        allow: 'autoplay; fullscreen', allowfullscreen: true, referrerpolicy: 'no-referrer'
+      });
+      placeholder.replaceWith(frame);
+      frame.focus();
+    }, 'play'));
+  panel.append(placeholder, outside('Open in Google Drive', driveUrl(video), 'text-link'));
   return panel;
 }
 
@@ -696,15 +631,12 @@ function renderMissing() {
 
 let previousPage = '';
 function renderRoute(navigate) {
-  disposePlayer?.();
-  disposePlayer = undefined;
   const route = readRoute(location.hash);
   document.title = 'Family Recipe Box';
   renderHeader(route.page);
   if (starting) return;
   if (!state.catalog) {
-    if (!googleConnected()) renderGoogleSignIn();
-    else if (state.envelope) renderLock();
+    if (state.envelope) renderLock();
     if (navigate) main.focus({ preventScroll: true });
     return;
   }
