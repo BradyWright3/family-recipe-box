@@ -1,7 +1,8 @@
 const prefix = 'recipe-box-' + self.registration.scope + '-';
-const cacheName = prefix + '6957c6718fa267fc';
+const cacheName = prefix + '34386be7b8357ecf';
 const shell = [
   './', './index.html', './styles.css', './app.js', './model.js', './crypto.js', './icons.js',
+  './google-drive.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png',
   './apple-touch-icon.png', './catalog.enc.json'
 ];
