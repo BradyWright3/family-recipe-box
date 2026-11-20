@@ -1,5 +1,5 @@
 const prefix = 'recipe-box-' + self.registration.scope + '-';
-const cacheName = prefix + '46fda6fff6fb2697';
+const cacheName = prefix + 'db36b8399725aa32';
 const shell = [
   './', './index.html', './styles.css', './app.js', './model.js', './crypto.js', './icons.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png',

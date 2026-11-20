@@ -1,6 +1,6 @@
 import {
   categories, categoryStyle, searchableRecipes, filterRecipes, recipeHash, readRoute,
-  parseDrive, driveUrl, sameVideo, applyVideoEdits, safeLink, validateCatalog
+  parseDrive, driveUrl, sameVideo, applyVideoEdits, safeLink, validateCatalog, parseYouTube
 } from './model.js';
 import { checkEnvelope, deriveKey, seal, unseal } from './crypto.js';
 import { icon } from './icons.js';
@@ -156,6 +156,7 @@ function renderHeader(page) {
   for (const [id, label, glyph, href] of [
     ['cookbook', 'Cookbook', 'book', '#/'],
     ['favorites', 'Favorites', 'heart', '#/favorites'],
+    ['my-recipes', 'My Recipes', 'book', '#/my-recipes'],
     ['videos', 'Videos', 'video', '#/videos']
   ]) {
     const link = anchor(label, href, 'nav-item', glyph);
@@ -415,17 +416,140 @@ function renderVideo(recipe) {
       anchor('Add Drive link', '#/videos/' + recipe.id, 'text-link', 'link'));
     return panel;
   }
+  return videoPanel(recipe.title, driveUrl(video, 'preview'), driveUrl(video), 'Google Drive', panel);
+}
+
+function videoPanel(title, embed, external, provider, panel = element('section', { class: 'panel video-panel' },
+  element('h2', {}, 'Recipe video'))) {
   const placeholder = element('div', { class: 'video-placeholder with-video' },
     button('Load video', 'button primary', () => {
       const frame = element('iframe', {
-        class: 'drive-player', src: driveUrl(video, 'preview'), title: 'Video for ' + recipe.title,
-        allow: 'autoplay; fullscreen', allowfullscreen: true, referrerpolicy: 'no-referrer'
+        class: 'drive-player', src: embed, title: 'Video for ' + title,
+        allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture',
+        allowfullscreen: true, referrerpolicy: 'strict-origin-when-cross-origin'
       });
       placeholder.replaceWith(frame);
       frame.focus();
     }, 'play'));
-  panel.append(placeholder, outside('Open in Google Drive', driveUrl(video), 'text-link'));
+  panel.append(placeholder, outside('Open in ' + provider, external, 'text-link'));
   return panel;
+}
+
+const customPath = '#/my-recipes';
+const customKey = id => 'custom:' + id;
+
+async function renderMyRecipes(route) {
+  const hash = location.hash;
+  const key = state.key;
+  const current = () => state.key === key && location.hash === hash;
+  const heading = element('section', { class: 'page-heading' }, element('h1', {}, 'My Recipes'),
+    p('Saved on this device.', 'muted'));
+  main.replaceChildren(heading, p('Loading recipes…', 'muted'));
+  try {
+    const records = route.id
+      ? [await keyStore('readonly', store => store.get(customKey(route.id)))].filter(Boolean)
+      : route.edit ? [] : await keyStore('readonly', store =>
+        store.getAll(IDBKeyRange.bound('custom:', 'custom:\uffff')));
+    const recipes = await Promise.all(records.map(async record => {
+      const recipe = await unseal(record.envelope, key, customKey(record.id));
+      return { ...recipe, id: record.id };
+    }));
+    if (!current()) return;
+    const recipe = recipes[0];
+    if (route.id && !recipe) return renderMissing();
+    if (route.edit) {
+      main.replaceChildren(anchor('Back to My Recipes', customPath, 'back text-link', 'back'),
+        customForm(recipe, current), footer());
+      return;
+    }
+    if (route.id) {
+      document.title = recipe.title + ' · Recipe Box';
+      const content = element('div', { class: 'detail-content' },
+        (recipe.ingredients || recipe.method) && recipeText('Recipe', recipe),
+        recipe.notes && element('section', { class: 'panel recipe-text' }, element('h2', {}, 'Notes'),
+          p(recipe.notes, 'caption-copy')));
+      const video = recipe.youtube && videoPanel(recipe.title,
+        'https://www.youtube.com/embed/' + recipe.youtube + '?playsinline=1&rel=0',
+        'https://www.youtube.com/watch?v=' + recipe.youtube, 'YouTube');
+      main.replaceChildren(anchor('Back to My Recipes', customPath, 'back text-link', 'back'),
+        element('section', { class: 'detail-heading' }, recipe.category && categoryBadge(recipe),
+          element('h1', {}, recipe.title),
+          anchor('Edit recipe', customPath + '/' + recipe.id + '/edit', 'button secondary')),
+        element('div', { class: 'custom-detail' }, video, content), footer());
+      return;
+    }
+    heading.append(anchor('Add recipe or Short', customPath + '/new', 'button primary custom-add'));
+    const list = element('div', { class: 'video-list' }, recipes.sort((a, b) => b.updated - a.updated).map(item =>
+      anchor([element('span', { class: 'video-title' }, item.title),
+        element('span', { class: 'video-state' }, item.youtube ? 'YouTube video' : item.category)],
+      customPath + '/' + item.id, 'video-row custom-row')));
+    main.replaceChildren(heading, recipes.length ? list : p('Your saved recipes and Shorts will appear here.', 'muted'), footer());
+  } catch {
+    if (current()) main.replaceChildren(heading, p('Saved recipes could not be opened on this device.', 'form-status'));
+  }
+}
+
+function customForm(recipe, current) {
+  const fields = [
+    ['title', 'Recipe name', 'input', 150], ['ingredients', 'Ingredients', 'textarea', 8000],
+    ['method', 'Instructions', 'textarea', 12000], ['notes', 'Notes', 'textarea', 8000],
+    ['youtube', 'YouTube Short or video link', 'input', 500]
+  ];
+  const category = element('select', { name: 'category', id: 'custom-category' },
+    element('option', { value: '' }, 'Choose a category'),
+    categories.filter(name => !['Unclear', 'Non-recipe'].includes(name)).map(name =>
+      element('option', { value: name, selected: recipe?.category === name }, name)));
+  const status = element('p', { role: 'alert', class: 'form-status' });
+  const submit = element('button', { type: 'submit', class: 'button primary' }, 'Save recipe');
+  const form = element('form', { class: 'video-form custom-form' },
+    fields.map(([name, label, tag, maxlength]) => {
+      const value = name === 'youtube' && recipe?.youtube
+        ? 'https://www.youtube.com/shorts/' + recipe.youtube : recipe?.[name] || '';
+      const input = element(tag, { name, id: 'custom-' + name, maxlength, required: name === 'title',
+        ...(tag === 'textarea' ? { rows: 4 } : { type: name === 'youtube' ? 'url' : 'text', value }) });
+      if (tag === 'textarea') input.value = value;
+      return element('label', { class: 'custom-field', for: 'custom-' + name },
+        element('span', { class: 'field-label' }, label), input);
+    }),
+    element('label', { class: 'custom-field', for: 'custom-category' },
+      element('span', { class: 'field-label' }, 'Category'), category), submit, status);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const entry = Object.fromEntries([...new FormData(form)].map(([name, value]) => [name, value.trim()]));
+    const youtube = entry.youtube ? parseYouTube(entry.youtube) : null;
+    if (!entry.title || (entry.youtube && !youtube)) {
+      status.textContent = !entry.title ? 'Enter a recipe name.' : 'Paste a valid YouTube Shorts or watch link.';
+      return;
+    }
+    const id = recipe?.id || crypto.randomUUID();
+    submit.disabled = true;
+    status.textContent = '';
+    try {
+      const envelope = await seal({ ...entry, youtube, updated: Date.now() },
+        state.key, state.envelope.salt, customKey(id));
+      if (!current()) return;
+      await keyStore('readwrite', store => store.put({ id, envelope }, customKey(id)));
+      if (current()) location.hash = customPath + '/' + id;
+    } catch {
+      status.textContent = 'The recipe could not be saved on this device. Try again.';
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  if (recipe) form.append(button('Delete recipe', 'text-button', async event => {
+    if (!confirm('Delete this recipe from this device?')) return;
+    event.currentTarget.disabled = true;
+    try {
+      await keyStore('readwrite', store => store.delete(customKey(recipe.id)));
+      if (current()) location.hash = customPath;
+    } catch {
+      status.textContent = 'The recipe could not be deleted.';
+      form.querySelector('button.text-button').disabled = false;
+    }
+  }));
+  return element('section', { class: 'panel video-editor custom-editor' },
+    element('h1', {}, recipe ? 'Edit recipe' : 'Add recipe or Short'),
+    p('A name and a YouTube link are enough to save a Short.', 'muted'), form);
 }
 
 function renderRecipe(recipe) {
@@ -589,7 +713,8 @@ function renderVideos(id) {
     id && anchor('Back to video list', '#/videos', 'back text-link', 'back'),
     element('section', { class: 'page-heading' },
       element('h1', {}, 'Manage videos'),
-      p('Paste a Drive file link or ID beside the corresponding recipe.', 'muted')),
+      p('Paste a Drive file link or ID beside the corresponding recipe.', 'muted'),
+      !id && anchor('Save a YouTube Short', customPath + '/new', 'button secondary custom-add', 'video')),
     recipe && renderVideoEditor(recipe),
     element('section', { class: 'panel export-panel' },
       element('div', {}, element('h2', {}, pending ? pending + (pending === 1 ? ' local edit' : ' local edits') : 'Publish video links'),
@@ -643,6 +768,7 @@ function renderRoute(navigate) {
   if (route.page === 'cookbook' || route.page === 'favorites') renderCollection(route.page);
   else if (route.page === 'recipe' && state.byId.has(route.id)) renderRecipe(state.byId.get(route.id));
   else if (route.page === 'videos') renderVideos(route.id);
+  else if (route.page === 'my-recipes') void renderMyRecipes(route);
   else if (route.page === 'install') renderInstall();
   else renderMissing();
   if (navigate) {

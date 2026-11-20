@@ -41,6 +41,10 @@ export function readRoute(hash) {
   if (hash === '' || hash === '#/' || hash === '#') return { page: 'cookbook' };
   if (hash === '#/favorites') return { page: 'favorites' };
   if (hash === '#/videos') return { page: 'videos' };
+  if (hash === '#/my-recipes') return { page: 'my-recipes' };
+  if (hash === '#/my-recipes/new') return { page: 'my-recipes', edit: true };
+  const custom = /^#\/my-recipes\/([0-9a-f-]{36})(\/edit)?$/.exec(hash);
+  if (custom) return { page: 'my-recipes', id: custom[1], edit: Boolean(custom[2]) };
   if (hash === '#/install') return { page: 'install' };
   const match = /^#\/(recipe|videos)\/(\d{3})$/.exec(hash);
   return match ? { page: match[1], id: match[2] } : { page: 'missing' };
@@ -58,6 +62,22 @@ export function parseDrive(input) {
     const key = url.searchParams.get('resourcekey');
     if (!/^[\w-]{10,200}$/.test(id || '') || (key && !/^[\w-]{1,200}$/.test(key))) return null;
     return key ? { id, resourceKey: key } : { id };
+  } catch {
+    return null;
+  }
+}
+
+export function parseYouTube(input) {
+  try {
+    const url = new URL(input.trim());
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    let id;
+    if (url.hostname === 'youtu.be') id = /^\/([\w-]{11})\/?$/.exec(url.pathname)?.[1];
+    else if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(url.hostname)) {
+      id = url.pathname === '/watch' ? url.searchParams.get('v')
+        : /^\/(?:shorts|embed)\/([\w-]{11})\/?$/.exec(url.pathname)?.[1];
+    }
+    return /^[\w-]{11}$/.test(id || '') ? id : null;
   } catch {
     return null;
   }

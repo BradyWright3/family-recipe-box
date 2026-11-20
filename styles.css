@@ -168,7 +168,16 @@ a { color: inherit; text-decoration: none; }
 }
 .video-placeholder > .icon { width: 27px; height: 27px; color: #706957; }
 .with-video { background: #e8eee1; }
-.drive-player { display: block; width: 100%; aspect-ratio: 4/5; max-height: 500px; border: 0; border-radius: 12px; background: #1b201a; }
+.drive-player { display: block; width: 100%; max-width: 440px; aspect-ratio: 9 / 16; justify-self: center; border: 0; border-radius: 12px; background: #1b201a; }
+.custom-add { margin-top: 12px; }
+.custom-editor { max-width: 700px; }
+.custom-editor > h1 { margin: 0 0 8px; }
+.custom-field { display: grid; gap: 4px; }
+.custom-form textarea { width: 100%; min-width: 0; resize: vertical; font: inherit; padding: 9px 12px; border: 1px solid #cfc5b4; border-radius: 10px; background: var(--card); color: var(--ink); }
+.custom-form input[type=url] { width: 100%; min-width: 0; min-height: 46px; font: inherit; padding: 9px 12px; border: 1px solid #cfc5b4; border-radius: 10px; background: var(--card); color: var(--ink); }
+.custom-row { grid-template-columns: minmax(0, 1fr) auto; }
+.custom-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 16px; align-items: start; }
+.custom-detail > :only-child { grid-column: 1 / -1; }
 .detail-heading #permalink { max-width: 450px; margin-top: 10px; }
 .button {
   display: inline-flex; justify-content: center; align-items: center; gap: 8px; width: fit-content; max-width: 100%;
@@ -248,7 +257,7 @@ input[type=password], input[type=text], select {
   .brand { margin-right: auto; font-size: 1.21rem; gap: 8px; }
   .brand-mark { width: 36px; height: 36px; border-radius: 9px; }
   .nav { order: 1; margin: 0; position: fixed; z-index: 3; bottom: 0; left: 0; right: 0; justify-content: space-around; border-top: 1px solid var(--line); background: var(--paper); padding: 5px max(10px, env(safe-area-inset-right)) calc(5px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
-  .nav-item { justify-content: center; flex: 1; padding: 0 6px; font-size: .83rem; }
+  .nav-item { justify-content: center; flex: 1; padding: 0 3px; gap: 4px; font-size: .77rem; white-space: nowrap; }
   .nav-item .icon { width: 16px; height: 16px; }
   .lock-button { width: 44px; height: 44px; }
   .shell { padding: 18px max(16px, env(safe-area-inset-right)) calc(73px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
@@ -267,7 +276,7 @@ input[type=password], input[type=text], select {
   .recipe-card h3 { font-size: 1.08rem; }
   .detail-layout { grid-template-columns: 1fr; }
   .video-panel { grid-row: 1; }
-  .drive-player { aspect-ratio: 4 / 5; }
+  .custom-detail { grid-template-columns: minmax(0, 1fr); }
   .back { margin-bottom: 5px; }
   .lock-layout { grid-template-columns: 1fr; gap: 13px; }
   .lock-hero .hero-text { max-width: 74%; }
