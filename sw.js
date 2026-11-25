@@ -1,7 +1,7 @@
 const prefix = 'recipe-box-' + self.registration.scope + '-';
-const cacheName = prefix + 'db36b8399725aa32';
+const cacheName = prefix + 'v2-backup-cooking';
 const shell = [
-  './', './index.html', './styles.css', './app.js', './model.js', './crypto.js', './icons.js',
+  './', './index.html', './styles.css', './app.js', './model.js', './crypto.js', './icons.js', './backup.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png',
   './apple-touch-icon.png', './catalog.enc.json'
 ];
@@ -34,26 +34,25 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (!shell.includes(relative)) return;
-  if (relative === './catalog.enc.json') {
-    event.respondWith((async () => {
-      const cache = await caches.open(cacheName);
-      const canonical = new URL(relative, scope).href;
-      try {
-        const response = await fetch(request, { cache: 'no-cache' });
-        if (response.ok) {
-          await cache.put(canonical, response.clone()).catch(() => {});
-          return response;
-        }
-        return await cache.match(canonical) || response;
-      } catch (error) {
-        const cached = await cache.match(canonical);
-        if (cached) return cached;
-        throw error;
+  // Network first (so edits show up on every device right away), cached copy when offline or slow.
+  event.respondWith((async () => {
+    const cache = await caches.open(cacheName);
+    const canonical = new URL(relative, scope).href;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch(request, { cache: 'no-cache', signal: controller.signal });
+      if (response.ok) {
+        await cache.put(canonical, response.clone()).catch(() => {});
+        return response;
       }
-    })());
-    return;
-  }
-  event.respondWith(caches.match(new URL(relative, scope).href, { cacheName }).then(
-    cached => cached || fetch(request)
-  ));
+      return await cache.match(canonical) || response;
+    } catch (error) {
+      const cached = await cache.match(canonical);
+      if (cached) return cached;
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  })());
 });

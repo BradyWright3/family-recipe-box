@@ -18,7 +18,8 @@ const paths = {
   play: 'm9 5 11 7-11 7V5Z',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4',
   phone: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm3 16h2',
-  check: 'm5 12 4 4 10-10'
+  check: 'm5 12 4 4 10-10',
+  pencil: 'M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4'
 };
 
 export function icon(name, className = '') {

@@ -298,3 +298,43 @@ input[type=password], input[type=text], select {
   .art-plate, .lock-hero .art-plate { right: -27px; }
   .art-grid { right: -100px; }
 }
+
+/* Cooking mode */
+body.cooking-open { overflow: hidden; }
+.cooking {
+  position: fixed; inset: 0; z-index: 20; overflow-y: auto; background: var(--paper); color: var(--ink);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-overflow-scrolling: touch;
+}
+.cooking-inner { width: min(760px, 100%); margin: 0 auto; padding: 18px 20px 48px; }
+.cooking-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.cooking-top h1 { font: bold 1.7rem/1.2 var(--serif); letter-spacing: -.03em; }
+.cooking-top .button { flex-shrink: 0; }
+.cooking-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+.cooking-awake { color: var(--quiet); font-size: .85rem; margin-bottom: 8px; }
+.cooking-awake:empty { display: none; }
+.cooking-body h2 { font: bold 1.35rem var(--serif); margin: 22px 0 8px; }
+.cook-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cook-item {
+  display: flex; align-items: flex-start; gap: 14px; min-height: 56px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  font-size: 1.28rem; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer;
+}
+.cook-item input { flex: 0 0 auto; width: 28px; height: 28px; margin: 2px 0 0; accent-color: var(--forest); }
+.cook-item input:checked + span { opacity: .45; text-decoration: line-through; }
+.cook-step { display: inline-block; min-width: 1.5em; color: var(--wine); }
+.cook-copy { font-size: 1.28rem; line-height: 1.6; }
+
+/* Backup */
+.backup-panel { padding: 16px; margin-top: 18px; align-items: flex-start; }
+.backup-panel .help { margin-top: 8px; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0; }
+@media (max-width: 640px) {
+  .backup-panel { flex-direction: column; }
+  .cook-item, .cook-copy { font-size: 1.15rem; }
+}
+
+/* My Recipes rows were being squeezed by the phone-width .video-row grid */
+@media (max-width: 640px) {
+  .video-row.custom-row { grid-template-columns: minmax(0, 1fr) auto; }
+}

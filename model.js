@@ -16,12 +16,12 @@ export const categoryStyle = {
 const normalize = value => value.toLowerCase().normalize('NFKD')
   .replace(/\p{M}/gu, '').replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
-export function searchableRecipes(recipes) {
+export function searchableRecipes(recipes, edits = {}) {
   return recipes.map(recipe => ({
     ...recipe,
     searchText: normalize([
       recipe.id, String(Number(recipe.id)), recipe.title, recipe.creator, recipe.category,
-      recipe.original.ingredients, recipe.published.ingredients
+      recipe.original.ingredients, recipe.published.ingredients, edits[recipe.id]?.ingredients || ''
     ].join(' '))
   }));
 }
@@ -46,6 +46,8 @@ export function readRoute(hash) {
   const custom = /^#\/my-recipes\/([0-9a-f-]{36})(\/edit)?$/.exec(hash);
   if (custom) return { page: 'my-recipes', id: custom[1], edit: Boolean(custom[2]) };
   if (hash === '#/install') return { page: 'install' };
+  const edit = /^#\/recipe\/(\d{3})\/edit$/.exec(hash);
+  if (edit) return { page: 'recipe', id: edit[1], edit: true };
   const match = /^#\/(recipe|videos)\/(\d{3})$/.exec(hash);
   return match ? { page: match[1], id: match[2] } : { page: 'missing' };
 }
