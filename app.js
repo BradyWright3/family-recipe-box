@@ -1,6 +1,7 @@
 import {
   categories, categoryStyle, searchableRecipes, filterRecipes, recipeHash, readRoute,
-  parseDrive, driveUrl, sameVideo, applyVideoEdits, safeLink, validateCatalog, parseYouTube
+  parseDrive, driveUrl, sameVideo, applyVideoEdits, safeLink, validateCatalog, parseYouTube,
+  recipeRows, groupRows, prettyText, validateCleanup, mergeCleanup
 } from './model.js';
 import { checkEnvelope, deriveKey, seal, unseal } from './crypto.js';
 import { icon } from './icons.js';
@@ -399,11 +400,15 @@ async function copyRecipeLink(id) {
 const splitRows = value => value.split(/\r?\n|;\s+/).map(item => item.trim()).filter(Boolean);
 
 function textList(value, steps = false) {
-  if (!value) return p(steps ? 'Instructions are unavailable.' : 'Ingredients are unavailable.', 'muted');
-  const rows = splitRows(value);
-  if (rows.length === 1) return p(rows[0], 'recipe-copy');
-  return element(steps ? 'ol' : 'ul', { class: 'recipe-list' },
-    rows.map(row => element('li', {}, row)));
+  const groups = groupRows(recipeRows(value));
+  if (!groups.length) return p(steps ? 'No written steps saved. Follow the video.' : 'Ingredients are unavailable.', 'muted');
+  const count = groups.reduce((total, group) => total + group.items.length, 0);
+  if (count === 1 && groups.length === 1 && !groups[0].heading) return p(prettyText(groups[0].items[0]), 'recipe-copy');
+  return element('div', { class: 'recipe-groups' }, groups.map(group => [
+    group.heading && element('h4', { class: 'recipe-group' }, prettyText(group.heading)),
+    group.items.length > 0 && element(steps ? 'ol' : 'ul', { class: 'recipe-list' },
+      group.items.map(row => element('li', {}, prettyText(row))))
+  ]));
 }
 
 function recipeText(title, copy, description) {
@@ -414,6 +419,10 @@ function recipeText(title, copy, description) {
       element('div', {}, element('h3', {}, 'Ingredients'), textList(copy.ingredients)),
       element('div', {}, element('h3', {}, 'Instructions'), textList(copy.method, true))));
 }
+
+const checkLabel = cleaned => cleaned.check === 'video'
+  ? 'Checked against the video.'
+  : 'Not checked against the video. Amounts come from the written source.';
 
 function renderVideo(recipe) {
   const video = videoFor(recipe.id);
@@ -462,13 +471,17 @@ function openCooking(title, sources, opener) {
     }));
 
   function checklist(value, ordered) {
-    const rows = value ? splitRows(value) : [];
-    if (!rows.length) return p(ordered ? 'Instructions are unavailable.' : 'Ingredients are unavailable.', 'muted');
-    if (rows.length === 1) return p(rows[0], 'cook-copy');
-    return element(ordered ? 'ol' : 'ul', { class: 'cook-list' }, rows.map((row, position) =>
-      element('li', {}, element('label', { class: 'cook-item' },
-        element('input', { type: 'checkbox' }),
-        element('span', {}, ordered && element('b', { class: 'cook-step' }, String(position + 1)), row)))));
+    const groups = groupRows(recipeRows(value));
+    if (!groups.length) return p(ordered ? 'Instructions are unavailable.' : 'Ingredients are unavailable.', 'muted');
+    const count = groups.reduce((total, group) => total + group.items.length, 0);
+    if (count === 1 && groups.length === 1 && !groups[0].heading) return p(prettyText(groups[0].items[0]), 'cook-copy');
+    return element('div', {}, groups.map(group => [
+      group.heading && element('h3', { class: 'cook-group' }, prettyText(group.heading)),
+      group.items.length > 0 && element(ordered ? 'ol' : 'ul', { class: 'cook-list' }, group.items.map((row, position) =>
+        element('li', {}, element('label', { class: 'cook-item' },
+          element('input', { type: 'checkbox' }),
+          element('span', {}, ordered && element('b', { class: 'cook-step' }, String(position + 1)), prettyText(row))))))
+    ]));
   }
 
   function render() {
@@ -732,10 +745,11 @@ function renderRecipeEditor(recipe) {
   document.title = 'Edit · ' + recipe.title;
   const mine = state.textEdits[recipe.id];
   const bases = [
+    recipe.cleaned && (recipe.cleaned.ingredients || recipe.cleaned.method) && { label: 'Cleaned recipe', ...recipe.cleaned },
     (recipe.original.ingredients || recipe.original.method) && { label: 'Saved caption', ...recipe.original },
     (recipe.published.ingredients || recipe.published.method) && { label: 'Published version', ...recipe.published }
   ].filter(Boolean);
-  const rows = value => value ? splitRows(value).join('\n') : '';
+  const rows = value => value ? recipeRows(value).join('\n') : '';
   const first = mine || bases[0] || {};
   let dirty = false;
   const ingredients = element('textarea', { id: 'edit-ingredients', rows: 9, maxlength: 8000 });
@@ -813,17 +827,31 @@ function renderRecipe(recipe) {
   const original = safeLink(recipe.original.url);
   const recipeBlocks = [];
   const mine = state.textEdits[recipe.id];
+  const cleaned = recipe.cleaned && (recipe.cleaned.ingredients || recipe.cleaned.method) ? recipe.cleaned : null;
   const cookSources = [
     mine && { label: 'My version', ...mine },
-    ...(recipe.category === 'Non-recipe' ? [] : [
-      hasOriginal && { label: 'Saved caption', ...recipe.original },
-      hasPublished && { label: 'Published version', ...recipe.published }
-    ])
+    ...(recipe.category === 'Non-recipe' ? [] : cleaned
+      ? [{ label: 'Recipe', ...cleaned }]
+      : [
+        hasOriginal && { label: 'Saved caption', ...recipe.original },
+        hasPublished && { label: 'Published version', ...recipe.published }
+      ])
   ].filter(Boolean);
   if (mine) recipeBlocks.push(recipeText('My version', mine, 'Edited on this device. The original text is below.'));
   if (recipe.category === 'Non-recipe') {
     recipeBlocks.push(element('section', { class: 'panel recipe-text' },
       element('h2', {}, 'Saved post'), p('The workbook marks this entry as a non-recipe.', 'muted')));
+  } else if (cleaned) {
+    recipeBlocks.push(recipeText(mine ? 'Cleaned recipe' : 'Recipe', cleaned, checkLabel(cleaned)));
+    if (hasOriginal || hasPublished) {
+      recipeBlocks.push(element('details', { class: 'panel source-versions' },
+        element('summary', {}, 'Original text before cleanup'),
+        recipe.original.note && p(recipe.original.note, 'source-note'),
+        recipe.published.note && p(recipe.published.note, 'source-note'),
+        hasOriginal && recipeText('From the saved caption', recipe.original),
+        hasPublished && recipeText('Published recipe candidate', recipe.published,
+          'Exact match to the saved TikTok is unverified.')));
+    }
   } else {
     if (hasOriginal) recipeBlocks.push(recipeText('From the saved caption', recipe.original));
     if (hasPublished) recipeBlocks.push(recipeText('Published recipe candidate', recipe.published,
@@ -831,10 +859,11 @@ function renderRecipe(recipe) {
     if (!hasOriginal && !hasPublished && !mine) recipeBlocks.push(element('section', { class: 'panel recipe-text' },
       element('h2', {}, 'Recipe details'), p('Ingredients and instructions are unavailable in the workbook.', 'muted')));
   }
-  const notes = element('section', { class: 'panel recipe-text' }, element('h2', {}, 'Source notes'),
+  const notes = element('section', { class: 'panel recipe-text' }, element('h2', {}, 'Notes & sources'),
     recipe.categoryNote && p('Category review. ' + recipe.categoryNote, 'source-note'),
-    recipe.original.note && p(recipe.original.note, 'source-note'),
-    recipe.published.note && p(recipe.published.note, 'source-note'),
+    cleaned && cleaned.notes.map(note => p(note, 'source-note')),
+    !cleaned && recipe.original.note && p(recipe.original.note, 'source-note'),
+    !cleaned && recipe.published.note && p(recipe.published.note, 'source-note'),
     recipe.description && element('details', { class: 'caption' }, element('summary', {}, 'Original caption'),
       p(recipe.description, 'caption-copy')),
     element('div', { class: 'source-links' },
@@ -944,6 +973,33 @@ function renderVideoEditor(recipe) {
     anchor('View recipe', recipeHash(recipe.id), 'text-link', 'arrow'));
 }
 
+function renderCleanupPanel() {
+  const status = element('p', { role: 'status', class: 'form-status' });
+  const picker = element('input', { type: 'file', accept: '.json,application/json,text/plain', hidden: true });
+  picker.addEventListener('change', async () => {
+    const [file] = picker.files;
+    picker.value = '';
+    if (!file) return;
+    try {
+      if (file.size > 3000000) throw new Error('That file is too large to be a cleanup file.');
+      const cleanup = validateCleanup(JSON.parse(await file.text()));
+      const { catalog, applied, skipped } = mergeCleanup(state.catalog, cleanup);
+      state.catalog = catalog;
+      rebuildRecipes();
+      status.textContent = 'Cleaned text applied to ' + applied + (applied === 1 ? ' recipe' : ' recipes') +
+        (skipped ? ' (' + skipped + ' not found)' : '') +
+        '. Now use Download encrypted update above and replace catalog.enc.json on GitHub to keep it on every device.';
+    } catch (error) {
+      status.textContent = error instanceof SyntaxError ? 'That file could not be read.' : error.message;
+    }
+  });
+  return element('section', { class: 'panel export-panel' },
+    element('div', {}, element('h2', {}, 'Apply recipe cleanup'),
+      p('Choose the recipe-cleanup file you were given. It adds one clean, consistent version of each recipe and keeps the original text underneath. ' +
+        'The cleanup is not permanent until you download the encrypted update and upload it.', 'muted'), status),
+    element('div', { class: 'detail-actions' }, button('Choose cleanup file', 'button secondary', () => picker.click(), 'arrow'), picker));
+}
+
 function renderVideos(id) {
   const recipe = id && state.byId.get(id);
   if (id && !recipe) { renderMissing(); return; }
@@ -986,6 +1042,7 @@ function renderVideos(id) {
       element('div', {}, element('h2', {}, pending ? pending + (pending === 1 ? ' local edit' : ' local edits') : 'Make video links permanent'),
         p('Video links are saved on this device and included in your backup. To make them permanent for every device, replace catalog.enc.json in your GitHub repository with this download.', 'muted')),
       download),
+    !recipe && renderCleanupPanel(),
     !recipe && element('section', { class: 'video-browser' },
       element('div', { class: 'video-filters' },
         searchBox('video-search', state.videoQuery, 'Search by recipe or post number', value => {

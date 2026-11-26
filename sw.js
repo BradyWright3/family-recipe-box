@@ -1,5 +1,5 @@
 const prefix = 'recipe-box-' + self.registration.scope + '-';
-const cacheName = prefix + 'v2-backup-cooking';
+const cacheName = prefix + 'v3-clean-recipes';
 const shell = [
   './', './index.html', './styles.css', './app.js', './model.js', './crypto.js', './icons.js', './backup.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable.png',

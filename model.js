@@ -21,7 +21,8 @@ export function searchableRecipes(recipes, edits = {}) {
     ...recipe,
     searchText: normalize([
       recipe.id, String(Number(recipe.id)), recipe.title, recipe.creator, recipe.category,
-      recipe.original.ingredients, recipe.published.ingredients, edits[recipe.id]?.ingredients || ''
+      recipe.original.ingredients, recipe.published.ingredients, recipe.cleaned?.ingredients || '',
+      edits[recipe.id]?.ingredients || ''
     ].join(' '))
   }));
 }
@@ -123,7 +124,8 @@ export function validateCatalog(catalog) {
   for (const recipe of catalog.recipes) {
     if (!/^\d{3}$/.test(recipe.id) || ids.has(recipe.id) || !recipe.title ||
         !categories.includes(recipe.category) || !recipe.original || !recipe.published ||
-        !Array.isArray(recipe.published.urls)) throw new Error('Invalid recipe record');
+        !Array.isArray(recipe.published.urls) ||
+        (recipe.cleaned !== undefined && !validCleaned(recipe.cleaned))) throw new Error('Invalid recipe record');
     ids.add(recipe.id);
   }
   for (const [id, video] of Object.entries(catalog.videos)) {
@@ -133,4 +135,69 @@ export function validateCatalog(catalog) {
     }
   }
   return catalog;
+}
+
+const cleanupFormat = 'family-recipe-box/cleanup-v1';
+
+export function validCleaned(value) {
+  return Boolean(value) && typeof value === 'object' &&
+    typeof value.ingredients === 'string' && value.ingredients.length <= 8000 &&
+    typeof value.method === 'string' && value.method.length <= 12000 &&
+    (value.ingredients.trim() || value.method.trim() || value.notes?.length) &&
+    ['video', 'none'].includes(value.check) &&
+    Array.isArray(value.notes) && value.notes.length <= 12 &&
+    value.notes.every(note => typeof note === 'string' && note.length <= 800);
+}
+
+// Checks a cleanup file before it is merged. Returns the recipe map or throws.
+export function validateCleanup(data) {
+  if (data?.format !== cleanupFormat || !data.recipes || typeof data.recipes !== 'object' ||
+      Array.isArray(data.recipes)) throw new Error('This is not a recipe cleanup file.');
+  const entries = Object.entries(data.recipes);
+  if (!entries.length || entries.length > 500) throw new Error('The cleanup file has no recipes.');
+  for (const [id, cleaned] of entries) {
+    if (!/^\d{3}$/.test(id) || !validCleaned(cleaned)) throw new Error('The cleanup file has a damaged entry (' + id + ').');
+  }
+  return data.recipes;
+}
+
+// Returns a new catalog with the cleaned text attached. Unknown ids are skipped.
+export function mergeCleanup(catalog, cleanup) {
+  let applied = 0;
+  const recipes = catalog.recipes.map(recipe => {
+    const cleaned = cleanup[recipe.id];
+    if (!cleaned) return recipe;
+    applied += 1;
+    return { ...recipe, cleaned: {
+      ingredients: cleaned.ingredients.trim(), method: cleaned.method.trim(),
+      notes: cleaned.notes.map(note => note.trim()).filter(Boolean), check: cleaned.check
+    } };
+  });
+  return { catalog: { ...catalog, recipes }, applied, skipped: Object.keys(cleanup).length - applied };
+}
+
+// Row helpers shared by the recipe page and cooking mode.
+const bullet = /^(?:[-\u2022\u25aa\u25cf*]\s+|\(?\d{1,2}[.)]\s+)/;
+export function recipeRows(value) {
+  return (value || '').split(/\r?\n|;\s+/).map(row => row.trim().replace(bullet, '').trim()).filter(Boolean);
+}
+
+// Splits rows into groups: a short row ending in a colon starts a new group.
+export function groupRows(rows) {
+  const groups = [];
+  for (const row of rows) {
+    if (row.endsWith(':') && row.length <= 60) groups.push({ heading: row.slice(0, -1), items: [] });
+    else {
+      if (!groups.length) groups.push({ heading: '', items: [] });
+      groups[groups.length - 1].items.push(row);
+    }
+  }
+  return groups.filter(group => group.items.length || group.heading);
+}
+
+const glyphs = { '1/2': '\u00bd', '1/4': '\u00bc', '3/4': '\u00be', '1/3': '\u2153', '2/3': '\u2154', '1/8': '\u215b' };
+export function prettyText(value) {
+  return value
+    .replace(/(?<![\d/])(1\/2|1\/4|3\/4|1\/3|2\/3|1\/8)(?![\d/])/g, match => glyphs[match])
+    .replace(/(\d) ([\u00bc\u00bd\u00be\u2153\u2154\u215b])/g, '$1$2');
 }
